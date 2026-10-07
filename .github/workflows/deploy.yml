@@ -1,0 +1,46 @@
+name: Deploy to 339.im
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+# 让 rsync 有权限写入服务器目录
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4 # 读取 package.json 的 packageManager 字段
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          # 固定服务器 host key，防中间人
+          echo "64.64.252.225 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICrnCWbWpEstdZ5dDQwRTHW40E8J4rGvYLPj/cPrDFnT" >> ~/.ssh/known_hosts
+
+      - name: Rsync to server
+        run: >
+          rsync -avz --delete
+          -e "ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes"
+          dist/ root@64.64.252.225:/var/www/339.im/
